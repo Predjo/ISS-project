@@ -253,11 +253,10 @@ Truck.prototype.tick = function() {
   var absSpeed = V3.length(me.vel);
 
   var groundAlt = ge.getGlobe().getGroundAltitude(lla[0], lla[1]);
-  var airborne = false;
   var steerAngle = 0;
   
   // Steering.
-  if (leftButtonDown || rightButtonDown) {
+  if (leftButtonDown || rightButtonDown || reverseButtonDown) {
     var TURN_SPEED_MIN = 40.0;  // radians/sec
     var TURN_SPEED_MAX = 60.0;  // radians/sec
  
@@ -291,14 +290,13 @@ Truck.prototype.tick = function() {
   }
   
   // Turn.
-  var newdir = airborne ? dir : V3.rotate(dir, up, steerAngle);
+  var newdir = V3.rotate(dir, up, steerAngle);
   me.modelFrame = M33.makeOrthonormalFrame(newdir, up);
   dir = me.modelFrame[1];
   up = me.modelFrame[2];
 
   var forwardSpeed = 0;
   
-  if (!airborne) {
     // TODO: if we're slipping, transfer some of the slip
     // velocity into forward velocity.
 
@@ -327,7 +325,6 @@ Truck.prototype.tick = function() {
       if (forwardSpeed > -MAX_REVERSE_SPEED)
         me.vel = V3.add(me.vel, V3.scale(dir, -DECEL * dt));
     }
-  }
 
   // Air drag.
   //
@@ -360,9 +357,6 @@ Truck.prototype.tick = function() {
     me.vel = V3.sub(me.vel, V3.scale(veldir, drag * dt));
   }
 
-  // Gravity
-  me.vel[2] -= 9.8 * dt;
-
   // Move.
   var deltaPos = V3.scale(me.vel, dt);
   me.pos = V3.add(me.pos, deltaPos);
@@ -378,24 +372,7 @@ Truck.prototype.tick = function() {
   }
 
   var normal = estimateGroundNormal(gpos, me.localFrame);
-  
-  if (airborne) {
-    // Cancel velocity into the ground.
-    //
-    // TODO: would be fun to add a springy suspension here so
-    // the truck bobs & bounces a little.
-    var speedOutOfGround = V3.dot(normal, me.vel);
-    if (speedOutOfGround < 0) {
-      me.vel = V3.add(me.vel, V3.scale(normal, -speedOutOfGround));
-    }
 
-    // Make our orientation follow the ground.
-    c0 = Math.exp(-dt / 0.25);
-    c1 = 1 - c0;
-    var blendedUp = V3.normalize(V3.add(V3.scale(up, c0),
-                                        V3.scale(normal, c1)));
-    me.modelFrame = M33.makeOrthonormalFrame(dir, blendedUp);
-  }
 
   // Propagate our state into Earth.
   gpos = V3.add(me.localAnchorCartesian,
@@ -405,15 +382,15 @@ Truck.prototype.tick = function() {
 
   var newhtr = M33.localOrientationMatrixToHeadingTiltRoll(me.modelFrame);
 
-  // Compute roll according to steering.
-  // TODO: this would be even more cool in 3d.
-  var absRoll = newhtr[2];
-  me.rollSpeed += steerAngle * forwardSpeed * 4* STEER_ROLL;
-  // Spring back to center, with damping.
-  me.rollSpeed += (ROLL_SPRING * -me.roll + ROLL_DAMP * me.rollSpeed);
-  me.roll += me.rollSpeed * dt;
-  me.roll = clamp(me.roll, -85, 85);
-  absRoll -= me.roll;
+  // // Compute roll according to steering.
+  // // TODO: this would be even more cool in 3d.
+   var absRoll = newhtr[2];
+  // me.rollSpeed += steerAngle * forwardSpeed * 4* STEER_ROLL;
+  // // Spring back to center, with damping.
+  // me.rollSpeed += (ROLL_SPRING * -me.roll + ROLL_DAMP * me.rollSpeed);
+  // me.roll += me.rollSpeed * dt;
+  // me.roll = clamp(me.roll, -85, 85);
+  // absRoll -= me.roll;
   
 
   me.orientation.set(newhtr[0], newhtr[1], absRoll);
