@@ -73,7 +73,10 @@ window.truck = null;
 
 // Pull the Milktruck model from 3D Warehouse.
 //var MODEL_URL = 'http://www.barnabu.co.uk/geapi/flightsim/hawk.kmz';
-var MODEL_URL = 'https://dl.dropboxusercontent.com/u/26697901/models/Mig29.kmz';
+
+var MODEL_URL = window.location.protocol + "//" + window.location.host + "/" + window.location.pathname.replace('index.html','') + 'models/Mig29.kmz';
+
+console.log(document.URL);
 
 var TICK_MS = 66;
 
