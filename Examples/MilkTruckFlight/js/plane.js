@@ -168,8 +168,8 @@ Truck.prototype.finishInit = function(kml) {
 
 leftButtonDown = false;
 rightButtonDown = false;
-gasButtonDown = false;
-reverseButtonDown = false;
+upButtonDown = false;
+downButtonDown = false;
 
 function keyDown(event) {
   if (!event) {
@@ -182,10 +182,10 @@ function keyDown(event) {
     rightButtonDown = true;
     event.returnValue = false;
   } else if (event.keyCode == 38) {  // Up.
-    gasButtonDown = true;
+    upButtonDown = true;
     event.returnValue = false;
   } else if (event.keyCode == 40) {  // Down.
-    reverseButtonDown = true;
+    downButtonDown = true;
     event.returnValue = false;
   } else {
     return true;
@@ -204,10 +204,10 @@ function keyUp(event) {
     rightButtonDown = false;
     event.returnValue = false;
   } else if (event.keyCode == 38) {  // Up.
-    gasButtonDown = false;
+    upButtonDown = false;
     event.returnValue = false;
   } else if (event.keyCode == 40) {  // Down.
-    reverseButtonDown = false;
+    downButtonDown = false;
     event.returnValue = false;
   }
   return false;
@@ -253,10 +253,11 @@ Truck.prototype.tick = function() {
   var absSpeed = V3.length(me.vel);
 
   var groundAlt = ge.getGlobe().getGroundAltitude(lla[0], lla[1]);
-  var steerAngle = 0;
+  var lrsteerAngle = 0;
+  var udsteerAngle = 0;
   
   // Steering.
-  if (leftButtonDown || rightButtonDown || reverseButtonDown) {
+  if (leftButtonDown || rightButtonDown || upButtonDown || downButtonDown) {
     var TURN_SPEED_MIN = 40.0;  // radians/sec
     var TURN_SPEED_MAX = 60.0;  // radians/sec
  
@@ -282,49 +283,57 @@ Truck.prototype.tick = function() {
       turnSpeed = TURN_SPEED_MAX;
     }
     if (leftButtonDown) {
-      steerAngle = turnSpeed/2 * dt * Math.PI / 180.0;
+      lrsteerAngle = turnSpeed/2 * dt * Math.PI / 180.0;
     }
     if (rightButtonDown) {
-      steerAngle = -turnSpeed/2 * dt * Math.PI / 180.0;
+      lrsteerAngle = -turnSpeed/2 * dt * Math.PI / 180.0;
+    }
+    if (upButtonDown) {
+      udsteerAngle = -turnSpeed/2 * dt * Math.PI / 180.0;
+    }
+    if (downButtonDown) {
+      udsteerAngle = turnSpeed/2 * dt * Math.PI / 360.0;
     }
   }
   
   // Turn.
-  var newdir = V3.rotate(dir, up, steerAngle);
-  me.modelFrame = M33.makeOrthonormalFrame(newdir, up);
+  var newdir = V3.rotate(dir, up, lrsteerAngle);
+  var newup = V3.rotate(up, me.modelFrame[0], udsteerAngle);
+  me.modelFrame = M33.makeOrthonormalFrame(newdir, newup);
   dir = me.modelFrame[1];
   up = me.modelFrame[2];
 
   var forwardSpeed = 0;
   
-    // TODO: if we're slipping, transfer some of the slip
-    // velocity into forward velocity.
+  // TODO: if we're slipping, transfer some of the slip
+  // velocity into forward velocity.
 
-    // Damp sideways slip.  Ad-hoc frictiony hack.
-    //
-    // I'm using a damped exponential filter here, like:
-    // val = val * c0 + val_new * (1 - c0)
-    //
-    // For a variable time step:
-    //  c0 = exp(-dt / TIME_CONSTANT)
-    var right = me.modelFrame[0];
-    var slip = V3.dot(me.vel, right);
-    c0 = Math.exp(-dt / 0.5);
-    me.vel = V3.sub(me.vel, V3.scale(right, slip * (1 - c0)));
+  // Damp sideways slip.  Ad-hoc frictiony hack.
+  //
+  // I'm using a damped exponential filter here, like:
+  // val = val * c0 + val_new * (1 - c0)
+  //
+  // For a variable time step:
+  //  c0 = exp(-dt / TIME_CONSTANT)
+  var right = me.modelFrame[0];
+  var slip = V3.dot(me.vel, right);
+  c0 = Math.exp(-dt / 0.5);
+  me.vel = V3.sub(me.vel, V3.scale(right, slip * (1 - c0)));
 
-    // Apply engine/reverse accelerations.
-    var ACCEL = 80.0;
-    var DECEL = 80.0;
-    var MAX_REVERSE_SPEED = 100.0;
-    forwardSpeed = V3.dot(dir, me.vel);
-    gasButtonDown = true;
-    if (gasButtonDown) {
-      // Accelerate forwards.
-      me.vel = V3.add(me.vel, V3.scale(dir, ACCEL * dt));
-    } else if (reverseButtonDown) {
-      if (forwardSpeed > -MAX_REVERSE_SPEED)
-        me.vel = V3.add(me.vel, V3.scale(dir, -DECEL * dt));
-    }
+  // Apply engine/reverse accelerations.
+  var ACCEL = 80.0;
+  var DECEL = 80.0;
+  var MAX_REVERSE_SPEED = 100.0;
+  forwardSpeed = V3.dot(dir, me.vel);
+  //upButtonDown = true;
+  me.vel = V3.add(me.vel, V3.scale(dir, ACCEL * dt));
+  if (downButtonDown) {
+    // Accelerate forwards.
+    me.vel = V3.add(me.vel, V3.scale(up, ACCEL * dt));
+  } else if (upButtonDown) {
+    if (forwardSpeed > -MAX_REVERSE_SPEED)
+      me.vel = V3.add(me.vel, V3.scale(up, -DECEL * 2 * dt));
+  }
 
   // Air drag.
   //
@@ -385,12 +394,12 @@ Truck.prototype.tick = function() {
   // // Compute roll according to steering.
   // // TODO: this would be even more cool in 3d.
    var absRoll = newhtr[2];
-  // me.rollSpeed += steerAngle * forwardSpeed * 4* STEER_ROLL;
-  // // Spring back to center, with damping.
-  // me.rollSpeed += (ROLL_SPRING * -me.roll + ROLL_DAMP * me.rollSpeed);
-  // me.roll += me.rollSpeed * dt;
-  // me.roll = clamp(me.roll, -85, 85);
-  // absRoll -= me.roll;
+  me.rollSpeed += lrsteerAngle * forwardSpeed * 4* STEER_ROLL;
+  // Spring back to center, with damping.
+  me.rollSpeed += (ROLL_SPRING * -me.roll + ROLL_DAMP * me.rollSpeed);
+  me.roll += me.rollSpeed * dt;
+  me.roll = clamp(me.roll, -85, 85);
+  absRoll -= me.roll;
   
 
   me.orientation.set(newhtr[0], newhtr[1], absRoll);
